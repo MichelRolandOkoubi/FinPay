@@ -1,0 +1,104 @@
+# FinPay Walkthrough — Sprints 1–3
+
+## Sprint 1: Infrastructure ✅
+Multi-module Maven project: `api-parent` → `common`, `payment-service`, `webhook-service`, `analytics-service` on Spring Boot 3.2.5.
+
+## Sprint 2: Data Layer ✅
+JPA entities ([Merchant](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/common/src/main/java/com/finpay/common/entities/Merchant.java#8-39), [Transaction](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/common/src/main/java/com/finpay/common/entities/Transaction.java#8-58), [WebhookEvent](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/common/src/main/java/com/finpay/common/entities/WebhookEvent.java#8-50)) with Lombok, UUID IDs, `@PrePersist` timestamps. Flyway V1 migration script.
+
+## Sprint 3: Core Payment API ✅
+
+### Architecture
+
+```mermaid
+sequenceDiagram
+    Client->>PaymentController: POST /v1/payments
+    PaymentController->>PaymentService: createPayment(request)
+    PaymentService->>TransactionRepository: findByIdempotencyKey()
+    alt Already exists
+        TransactionRepository-->>PaymentService: existing tx
+    else New payment
+        PaymentService->>TransactionRepository: save(PENDING)
+        PaymentService->>StripeService: createPaymentIntent()
+        StripeService->>Stripe API: PaymentIntent.create()
+        Stripe API-->>StripeService: PaymentIntent
+        PaymentService->>TransactionRepository: save(status update)
+    end
+    PaymentService-->>PaymentController: PaymentResponse
+    PaymentController-->>Client: 201 Created
+```
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| [dto/CreatePaymentRequest.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/dto/CreatePaymentRequest.java) | Input DTO (amount, currency, method, merchantId, idempotencyKey) |
+| [dto/PaymentResponse.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/dto/PaymentResponse.java) | Output DTO (id, status, stripePaymentIntentId, createdAt) |
+| [service/StripeService.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/service/StripeService.java) | Stripe SDK wrapper with idempotency support |
+| [service/PaymentService.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/service/PaymentService.java) | Payment orchestrator with DB + Stripe flow |
+| [controller/PaymentController.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/controller/PaymentController.java) | REST endpoints (POST + GET) |
+| [config/SecurityConfig.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/config/SecurityConfig.java) | Stateless security, permits /v1/** |
+| [exception/GlobalExceptionHandler.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/exception/GlobalExceptionHandler.java) | Clean error responses |
+
+### Build Verification
+
+```
+[INFO] FinPay API Parent ............ SUCCESS [1.679 s]
+[INFO] common ....................... SUCCESS [5.011 s]
+[INFO] payment-service .............. SUCCESS [4.168 s]
+[INFO] webhook-service .............. SUCCESS [1.918 s]
+[INFO] analytics-service ............ SUCCESS [2.208 s]
+[INFO] BUILD SUCCESS
+```
+
+## Sprint 4: Webhooks ✅
+
+### Architecture
+
+```mermaid
+sequenceDiagram
+    participant Merchant DB
+    participant Webhook Dispatcher
+    participant Kafka (payment.events)
+    participant Payment Service
+    
+    Payment Service->>Kafka (payment.events): publish(PaymentEvent)
+    Kafka (payment.events)-->>Webhook Dispatcher: consume(PaymentEvent)
+    Webhook Dispatcher->>Merchant DB: find merchant details
+    Webhook Dispatcher->>Webhook Dispatcher: compute HMAC-SHA256 signature
+    Webhook Dispatcher->>Merchant API: POST payload + signature
+    Webhook Dispatcher->>Merchant DB: Persist WebhookEvent (status)
+```
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| [events/PaymentEvent.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/common/src/main/java/com/finpay/common/events/PaymentEvent.java) | Shared Kafka event DTO |
+| [service/PaymentEventPublisher.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/payment-service/src/main/java/com/finpay/payment/service/PaymentEventPublisher.java) | Kafka producer for payment status changes |
+| [consumer/PaymentEventConsumer.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/webhook-service/src/main/java/com/finpay/webhook/consumer/PaymentEventConsumer.java) | Kafka listener intercepting payment events |
+| [service/WebhookDispatcherService.java](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/webhook-service/src/main/java/com/finpay/webhook/service/WebhookDispatcherService.java) | HTTP dispatcher with HMAC-SHA256 signature |
+| [V1__Initial_Schema.sql](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/api/common/src/main/resources/db/migration/V1__Initial_Schema.sql) | Corrected schema mapping `UUID` primary keys |
+
+## Sprint 5: Frontend Foundation ✅
+
+We built a **State-of-the-Art Next.js 16 Dashboard**:
+*   **Design Language**: Deep dark mode combining glassmorphism overlays and vibrant gradient elements using `hsl()` tokens configured in Tailwind v4.
+*   **Typography**: Implemented **Inter** to guarantee professional financial aesthetics.
+*   **Reusability**: Engineered the [Card](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/web/src/components/ui/Card.tsx#9-16) component with micro-interactions and strict layout components ([Sidebar](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/web/src/components/layout/Sidebar.tsx#15-69), [Header](file:///d:/DEVS/ANTIGRAVITY/FINTECH/FinPay/apps/web/src/components/layout/Header.tsx#3-33)) adhering to React 19 standards.
+*   **Routing**: Used Next App Router (`app/dashboard`) natively.
+
+### API Usage (once running with Docker infra)
+
+```bash
+# Create a payment
+curl -X POST http://localhost:8081/v1/payments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 5000,
+    "currency": "eur",
+    "method": "CARD",
+    "merchantId": "<uuid>",
+    "idempotencyKey": "pay_abc123",
+    "description": "Test payment"
+  }'
+```
