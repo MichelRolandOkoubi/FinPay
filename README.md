@@ -1,3 +1,5 @@
+[![Author](https://img.shields.io/badge/Author-Michel%20Okoubi%20%E2%80%93%20Staff%20Engineer-blueviolet)](https://github.com/pulsar-jvm/pulsar)
+
 # FinPay — Multi-Channel Payment Gateway
 
 FinPay is a high-performance, asynchronous payment orchestration platform designed for modern fintech applications. It provides a secure bridge between merchants and payment providers (like Stripe), featuring real-time analytics and robust webhook management.
