@@ -46,6 +46,7 @@ FinPay/
 - Docker & Docker Compose
 - Java 21+
 - Node.js 20+
+- Next.js 16
 
 ### 2. Infrastructure
 ```bash
